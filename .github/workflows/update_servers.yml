@@ -8,6 +8,12 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    
+    # --- این بخش کلیدی برای حل مشکل است ---
+    permissions:
+      contents: write # به ورک‌فلو اجازه نوشتن (push) در ریپازیتوری را می‌دهد
+    # ------------------------------------
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -32,9 +38,9 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           
-          if ! git diff --quiet README.md nodes.md ss_sub ss; then # <--- 'ss' اضافه شد
+          if ! git diff --quiet README.md nodes.md ss_sub ss; then
             echo "Changes detected. Committing..."
-            git add README.md nodes.md ss_sub ss # <--- 'ss' اضافه شد
+            git add README.md nodes.md ss_sub ss
             git commit -m "Auto-update Shadowsocks servers [$(date -u +'%Y-%m-%d %H:%M')]"
             git push
           else
