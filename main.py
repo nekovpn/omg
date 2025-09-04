@@ -62,13 +62,21 @@ def change_shadowsocks_tag(ss_link, new_tag):
         # اگر لینک فرمت نامعتبر داشت، همان را برگردان
         return ss_link
 
-def update_readme(servers):
+
+def send_to_telegram(servers):
+    """خلاصه نتایجdef update_readme(servers):
     """فایل README.md را با لیست سرورهای شادوساکس آپدیت می‌کند."""
     if not servers:
         logging.info("No servers to update in README.")
         return
 
     now_utc = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # --- تغییر کلیدی اینجاست ---
+    # لیست سرورها را به یک رشته واحد با خطوط جدید تبدیل می‌کنیم
+    server_list_str = "\n".join(servers)
+    
+    # متغیر بالا را در f-string استفاده می‌کنیم
     content = (
         f"# Shadowsocks Servers\n\n"
         f"**Tag:** `{NEW_TAG}`\n"
@@ -80,16 +88,13 @@ def update_readme(servers):
         f"```\n\n"
         f"**Server List:**\n"
         f"```\n"
-        f"{'\n'.join(servers)}\n"
+        f"{server_list_str}\n" # استفاده از متغیر جداگانه
         f"```\n"
     )
 
     with open(README_FILE, 'w', encoding='utf-8') as f:
         f.write(content)
-    logging.info(f"Successfully updated {README_FILE}")
-
-def send_to_telegram(servers):
-    """خلاصه نتایج را به کانال تلگرام ارسال می‌کند."""
+    logging.info(f"Successfully updated {README_FILE}") را به کانال تلگرام ارسال می‌کند."""
     if not servers or not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHANNEL_ID:
         logging.warning("Telegram credentials missing or no servers to send. Skipping notification.")
         return
