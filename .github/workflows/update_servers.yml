@@ -2,7 +2,7 @@ name: Update Shadowsocks Servers and Notify Telegram
 
 on:
   schedule:
-    - cron: '0 */6 * * *' # هر 6 ساعت یکبار
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 jobs:
@@ -20,7 +20,7 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Run Python script to fetch and process servers
+      - name: Run Python script
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
@@ -32,11 +32,9 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           
-          # چک کردن تغییرات در تمام فایل‌های مهم
-          if ! git diff --quiet README.md nodes.md ss_sub ss.txt; then
+          if ! git diff --quiet README.md nodes.md ss_sub ss; then # <--- 'ss' اضافه شد
             echo "Changes detected. Committing..."
-            # افزودن تمام فایل‌های آپدیت شده
-            git add README.md nodes.md ss_sub ss.txt
+            git add README.md nodes.md ss_sub ss # <--- 'ss' اضافه شد
             git commit -m "Auto-update Shadowsocks servers [$(date -u +'%Y-%m-%d %H:%M')]"
             git push
           else
