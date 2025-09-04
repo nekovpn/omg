@@ -1,65 +1,100 @@
-import datetime
-from proxyUtil import *
+import os
+import requests
+import re
+from datetime import datetime
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# --- تنظیمات ---
+NODES_FILE = 'nodes.md'
+README_FILE = 'README.md'
+# این متغیرها از GitHub Secrets خوانده می‌شوند
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+TELEGRAM_CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID')
 
-
-def checkURL(url):
+def get_shadowsocks_servers(file_path):
+    """از فایل ورودی، فقط لینک‌های شادوساکس (ss://) را استخراج می‌کند."""
     try:
-        r = requests.head(url, timeout=3)
-    except:
-        return False
-    return r.status_code//100 == 2
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        # با استفاده از regex فقط خطوطی که با ss:// شروع می‌شوند را پیدا می‌کنیم
+        ss_links = re.findall(r'ss://[^\s]+', content)
+        # حذف لینک‌های تکراری و مرتب‌سازی
+        unique_links = sorted(list(set(ss_links)))
+        print(f"تعداد {len(unique_links)} سرور شادوساکس پیدا شد.")
+        return unique_links
+    except FileNotFoundError:
+        print(f"خطا: فایل {file_path} پیدا نشد.")
+        return []
+
+def update_readme(servers):
+    """فایل README.md را با لیست سرورهای جدید آپدیت می‌کند."""
+    if not servers:
+        print("سروری برای آپدیت README پیدا نشد.")
+        return
+
+    # تاریخ و زمان فعلی برای نمایش در README
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    content = f"# Shadowsocks Servers\n\n"
+    content += f"**Last Updated:** `{now}` (UTC)\n\n"
+    content += "```\n"
+    content += "\n".join(servers)
+    content += "\n```\n"
+
+    try:
+        with open(README_FILE, 'w', encoding='utf-8') as f:
+            f.write(content)
+        print(f"فایل {README_FILE} با موفقیت آپدیت شد.")
+    except Exception as e:
+        print(f"خطا در نوشتن فایل README: {e}")
 
 
-output = []
-proxy = []
+def send_to_telegram(servers):
+    """لیست سرورها را به کانال تلگرام ارسال می‌کند."""
+    if not servers or not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHANNEL_ID:
+        print("اطلاعات تلگرام ناقص است یا سروری برای ارسال وجود ندارد. از ارسال پیام صرف‌نظر شد.")
+        return
 
-with open("nodes.md", encoding="utf8") as file:
-    cnt = 0
-    while line := file.readline():
-        line = line.rstrip()
-        if line.startswith("|"):
-            if cnt>1 :
-                url = line.split('|')[-2]
-                for _ in range(3):
-                    if status := checkURL(url):
-                        break
-                status = "✅" if status else "❌"
-                p = ScrapURL(url)
-                proxy.extend(p)
-                line = re.sub(r'^\|+?(.*?)\|+?(.*?)\|+?', f'| {status} | {len(p)} |', line, count=1)
-            cnt+=1
-        output.append(line)
-
-with open("nodes.md", "w") as f:
-    f.write('\n'.join(output))
-
-TAGs = ["4FreeIran", "4Nika", "4Sarina", "4Jadi", "4Kian", "4Mohsen"]
-cur_tag = TAGs[datetime.datetime.now().hour % len(TAGs)]
-
-lines = tagsChanger(proxy, cur_tag)
-lines = tagsChanger(sorted(set(lines)), cur_tag, True)
-
-ss  = [*filter(lambda s: s.startswith("ss://"), lines)]
-ssr  = [*filter(lambda s: s.startswith("ssr://"), lines)]
-vmess = [*filter(lambda s: s.startswith("vmess://"), lines)]
-vless = [*filter(lambda s: s.startswith("vless://"), lines)]
-trojan = [*filter(lambda s: s.startswith("trojan://"), lines)]
-
-#print([*map(len, [ss, ssr, vmess, vless, trojan])])
-
-with open('all', 'wb') as f:
-    f.write(base64.b64encode('\n'.join(lines).encode()))
-
-with open('ss', 'wb') as f:
-    f.write(base64.b64encode('\n'.join(ss).encode()))
+    message_text = "🚀 **لیست جدید سرورهای Shadowsocks** 🚀\n\n"
+    message_text += f"**تعداد:** `{len(servers)}` سرور\n"
+    message_text += f"**تاریخ آپدیت:** `{datetime.now().strftime('%Y-%m-%d %H:%M')}`\n\n"
     
-with open('vmess', 'wb') as f:
-    f.write(base64.b64encode('\n'.join(vmess).encode()))
+    # برای جلوگیری از طولانی شدن پیام، می‌توانیم فقط تعدادی را بفرستیم یا همه را در یک بلاک کد
+    message_text += "```\n"
+    message_text += "\n".join(servers)
+    message_text += "\n```"
+    
+    # API تلگرام برای ارسال پیام
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    
+    # برای جلوگیری از خطای پیام طولانی تلگرام (حداکثر 4096 کاراکتر)
+    if len(message_text) > 4096:
+        print("پیام برای ارسال به تلگرام بیش از حد طولانی است. پیام خلاصه‌شده ارسال می‌شود.")
+        message_text = (
+            f"🚀 **آپدیت جدید سرورهای Shadowsocks**\n"
+            f"**تعداد:** `{len(servers)}` سرور جدید پیدا شد.\n"
+            f"برای مشاهده لیست کامل، به ریپازیتوری گیت‌هاب مراجعه کنید."
+        )
 
-with open('vless', 'wb') as f:
-    f.write(base64.b64encode('\n'.join(vless).encode()))
+    payload = {
+        'chat_id': TELEGRAM_CHANNEL_ID,
+        'text': message_text,
+        'parse_mode': 'Markdown'
+    }
 
-with open('trojan', 'wb') as f:
-    f.write(base64.b64encode('\n'.join(trojan).encode()))
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        if response.status_code == 200:
+            print("پیام با موفقیت به تلگرام ارسال شد.")
+        else:
+            print(f"خطا در ارسال پیام به تلگرام: {response.status_code} - {response.text}")
+    except Exception as e:
+        print(f"خطا در ارتباط با سرور تلگرام: {e}")
+
+
+if __name__ == "__main__":
+    ss_servers = get_shadowsocks_servers(NODES_FILE)
+    if ss_servers:
+        update_readme(ss_servers)
+        send_to_telegram(ss_servers)
+    else:
+        print("هیچ سرور شادوساکسی پیدا نشد. عملیات متوقف شد.")
