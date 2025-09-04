@@ -9,7 +9,7 @@ from urllib.parse import quote
 # --- Settings ---
 NODES_FILE = 'nodes.md'
 README_FILE = 'README.md'
-SS_FILE = 'ss'  # <--- اسم فایل به 'ss' تغییر کرد
+SS_FILE = 'ss'
 SS_SUB_FILE = 'ss_sub'
 NEW_TAG = 'proxyfig'
 REQUEST_TIMEOUT = 5
@@ -42,39 +42,45 @@ def change_shadowsocks_tag(ss_link, new_tag):
         return ss_link
 
 def update_readme(servers):
+    """Updates the README.md file without the full server list."""
     if not servers: return
     now_utc = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    server_list_str = "\n".join(servers)
     repo_url = f"https://raw.githubusercontent.com/{os.environ.get('GITHUB_REPOSITORY', '')}/main"
     content = (
         f"# Shadowsocks Servers\n\n"
         f"**Tag:** `{NEW_TAG}`\n"
         f"**Total Servers:** `{len(servers)}`\n"
         f"**Last Updated (UTC):** `{now_utc}`\n\n"
-        f"**Subscription Link (Base64):**\n```\n{repo_url}/{SS_SUB_FILE}\n```\n\n"
-        f"**Plain Text Link:**\n```\n{repo_url}/{SS_FILE}\n```\n\n"
-        f"**Server List:**\n```\n{server_list_str}\n```\n"
+        f"**Subscription Link (Base64):**\n"
+        f"```\n{repo_url}/{SS_SUB_FILE}\n```\n\n"
+        f"**Plain Text Link:**\n"
+        f"```\n{repo_url}/{SS_FILE}\n```\n"
     )
     with open(README_FILE, 'w', encoding='utf-8') as f: f.write(content)
     logging.info(f"Successfully updated {README_FILE}")
 
 def send_to_telegram(servers):
+    """Sends a notification with the GitHub page link to the Telegram channel."""
     if not all([servers, TELEGRAM_BOT_TOKEN, TELEGRAM_CHANNEL_ID]): return
     repo_name = os.environ.get('GITHUB_REPOSITORY')
     if not repo_name:
         logging.error("GITHUB_REPOSITORY env var not set.")
         return
-    raw_link = f"https://raw.githubusercontent.com/{repo_name}/main/{SS_FILE}" # <--- لینک به 'ss' اصلاح شد
+        
+    # --- این خط برای ساخت لینک جدید تغییر کرده است ---
+    github_page_link = f"https://github.com/{repo_name}/blob/main/{SS_FILE}"
+    # --- پایان تغییر ---
+
     now_utc = datetime.utcnow().strftime('%Y-%m-%d %H:%M')
     message_text = (
         f"🚀 **Shadowsocks Servers Update** 🚀\n\n"
         f"✅ `{len(servers)}` new servers are available!\n"
         f"🏷️ **Tag:** `{NEW_TAG}`\n"
         f"⏰ **Updated (UTC):** `{now_utc}`\n\n"
-        f"**Click the link below to get the servers:**\n"
+        f"**Click the link below to view the servers on GitHub:**\n"
         f"👇👇👇\n"
-        f"🔗 [**Direct Link to Server List ({SS_FILE})**]({raw_link})\n\n"
-        f"Or copy this URL:\n```\n{raw_link}\n```"
+        f"🔗 [**View Server List on GitHub ({SS_FILE})**]({github_page_link})\n\n"
+        f"Or copy this URL:\n```\n{github_page_link}\n```"
     )
     payload = {'chat_id': TELEGRAM_CHANNEL_ID, 'text': message_text, 'parse_mode': 'Markdown'}
     try:
@@ -110,6 +116,20 @@ def main():
 
     if ss_servers_final:
         content = '\n'.join(ss_servers_final)
+        # 1. Create 'ss' file (plain text)
+        with open(SS_FILE, 'w', encoding='utf-8') as f: f.write(content)
+        logging.info(f"`{SS_FILE}` file created.")
+        # 2. Create 'ss_sub' file (Base64 subscription)
+        with open(SS_SUB_FILE, 'w', encoding='utf-8') as f: f.write(base64.b64encode(content.encode()).decode())
+        logging.info(f"`{SS_SUB_FILE}` subscription file created.")
+        
+        update_readme(ss_servers_final)
+        send_to_telegram(ss_servers_final)
+    else:
+        logging.warning("No Shadowsocks servers found.")
+
+if __name__ == "__main__":
+    main()        content = '\n'.join(ss_servers_final)
         # 1. Create 'ss' file (plain text)
         with open(SS_FILE, 'w', encoding='utf-8') as f: f.write(content)
         logging.info(f"`{SS_FILE}` file created.")
