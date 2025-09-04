@@ -67,9 +67,7 @@ def send_to_telegram(servers):
         logging.error("GITHUB_REPOSITORY env var not set.")
         return
         
-    # --- این خط برای ساخت لینک جدید تغییر کرده است ---
     github_page_link = f"https://github.com/{repo_name}/blob/main/{SS_FILE}"
-    # --- پایان تغییر ---
 
     now_utc = datetime.utcnow().strftime('%Y-%m-%d %H:%M')
     message_text = (
@@ -110,6 +108,26 @@ def main():
         else:
             output_nodes_md.append(line)
     with open(NODES_FILE, "w", encoding="utf8") as f: f.write(''.join(output_nodes_md))
+    
+    ss_servers_final = sorted([change_shadowsocks_tag(p, NEW_TAG) for p in all_found_proxies if p.startswith("ss://")])
+    logging.info(f"Total unique Shadowsocks servers found: {len(ss_servers_final)}")
+
+    if ss_servers_final:
+        content = '\n'.join(ss_servers_final)
+        # 1. Create 'ss' file (plain text)
+        with open(SS_FILE, 'w', encoding='utf-8') as f: f.write(content)
+        logging.info(f"`{SS_FILE}` file created.")
+        # 2. Create 'ss_sub' file (Base64 subscription)
+        with open(SS_SUB_FILE, 'w', encoding='utf-8') as f: f.write(base64.b64encode(content.encode()).decode())
+        logging.info(f"`{SS_SUB_FILE}` subscription file created.")
+        
+        update_readme(ss_servers_final)
+        send_to_telegram(ss_servers_final)
+    else:
+        logging.warning("No Shadowsocks servers found.")
+
+if __name__ == "__main__":
+    main()    with open(NODES_FILE, "w", encoding="utf8") as f: f.write(''.join(output_nodes_md))
     
     ss_servers_final = sorted([change_shadowsocks_tag(p, NEW_TAG) for p in all_found_proxies if p.startswith("ss://")])
     logging.info(f"Total unique Shadowsocks servers found: {len(ss_servers_final)}")
