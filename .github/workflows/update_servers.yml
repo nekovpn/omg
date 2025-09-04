@@ -1,0 +1,55 @@
+name: Update Shadowsocks Servers and Notify Telegram
+
+# تریگرها:
+# 1. schedule: هر 6 ساعت یکبار به صورت خودکار اجرا می‌شود.
+# 2. workflow_dispatch: به شما اجازه می‌دهد که به صورت دستی از تب Actions آن را اجرا کنید.
+on:
+  schedule:
+    - cron: '0 */6 * * *' # در دقایق 0 هر 6 ساعت (00:00, 06:00, 12:00, 18:00 UTC)
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # مرحله 1: کد ریپازیتوری را دریافت می‌کند
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # مرحله 2: پایتون را نصب و آماده می‌کند
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      # مرحله 3: کتابخانه‌های مورد نیاز پایتون را نصب می‌کند
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      # مرحله 4: اسکریپت اصلی پایتون را اجرا می‌کند
+      # توکن و آیدی کانال از Secrets گیت‌هاب به اسکریپت تزریق می‌شوند
+      - name: Run the Python script
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+        run: python main.py
+
+      # مرحله 5: تغییرات ایجاد شده در README.md را کامیت و پوش می‌کند
+      - name: Commit and push if there are changes
+        run: |
+          # ابتدا چک می‌کنیم که آیا تغییری در فایل‌ها ایجاد شده است یا نه
+          if [[ -z $(git status -s) ]]; then
+            echo "No changes to commit."
+          else
+            # تنظیمات کاربر گیت برای کامیت کردن
+            git config --global user.name 'github-actions[bot]'
+            git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+            # افزودن فایل README.md به استیج
+            git add README.md
+            # کامیت کردن تغییرات با یک پیام داینامیک
+            git commit -m "Update Shadowsocks servers [$(date -u +'%Y-%m-%d %H:%M:%S')]"
+            # پوش کردن به ریپازیتوری
+            git push
+          fi
