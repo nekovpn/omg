@@ -9,6 +9,8 @@ from urllib.parse import quote
 # --- Settings ---
 NODES_FILE = 'nodes.md'
 README_FILE = 'README.md'
+SS_TEXT_FILE = 'ss.txt'  # <-- فایل جدید
+SS_SUB_FILE = 'ss_sub'    # <-- فایل اشتراک
 NEW_TAG = 'proxyfig'
 REQUEST_TIMEOUT = 5
 
@@ -29,14 +31,11 @@ def get_proxies_from_url(url):
         
         content = response.text
         try:
-            # Try to decode from base64
             decoded_content = base64.b64decode(content).decode('utf-8')
             proxies = decoded_content.splitlines()
         except (base64.binascii.Error, UnicodeDecodeError):
-            # If not base64, use the raw content
             proxies = content.splitlines()
             
-        # Clean up the list and remove empty lines
         valid_proxies = [p.strip() for p in proxies if p.strip().startswith(('ss://', 'vmess://', 'vless://', 'trojan://', 'ssr://'))]
         logging.info(f"Found {len(valid_proxies)} proxies from {url}")
         return valid_proxies
@@ -53,7 +52,6 @@ def change_shadowsocks_tag(ss_link, new_tag):
     try:
         parts = ss_link.split('#', 1)
         base_link = parts[0]
-        # URL-encode the new tag to handle special characters
         encoded_tag = quote(new_tag)
         return f"{base_link}#{encoded_tag}"
     except Exception:
@@ -66,23 +64,21 @@ def update_readme(servers):
         return
 
     now_utc = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    
-    # Convert the server list to a single string
     server_list_str = "\n".join(servers)
+    
+    repo_url = f"https://raw.githubusercontent.com/{os.environ.get('GITHUB_REPOSITORY', '')}/main"
     
     content = (
         f"# Shadowsocks Servers\n\n"
         f"**Tag:** `{NEW_TAG}`\n"
         f"**Total Servers:** `{len(servers)}`\n"
         f"**Last Updated (UTC):** `{now_utc}`\n\n"
-        f"**Subscription Link:**\n"
-        f"```\n"
-        f"https://raw.githubusercontent.com/{os.environ.get('GITHUB_REPOSITORY', '')}/main/ss_sub\n"
-        f"```\n\n"
+        f"**Subscription Link (Base64):**\n"
+        f"```\n{repo_url}/{SS_SUB_FILE}\n```\n\n"
+        f"**Plain Text Link (for custom scripts):**\n"
+        f"```\n{repo_url}/{SS_TEXT_FILE}\n```\n\n"
         f"**Server List:**\n"
-        f"```\n"
-        f"{server_list_str}\n"
-        f"```\n"
+        f"```\n{server_list_str}\n```\n"
     )
 
     with open(README_FILE, 'w', encoding='utf-8') as f:
@@ -90,33 +86,52 @@ def update_readme(servers):
     logging.info(f"Successfully updated {README_FILE}")
 
 def send_to_telegram(servers):
-    """Sends a summary of the results to the Telegram channel."""
+    """Sends the list of servers to the Telegram channel, splitting into multiple messages if necessary."""
     if not servers or not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHANNEL_ID:
         logging.warning("Telegram credentials missing or no servers to send. Skipping notification.")
         return
 
     now_utc = datetime.utcnow().strftime('%Y-%m-%d %H:%M')
-    message_text = (
+    header = (
         f"🚀 **Shadowsocks Servers Update** 🚀\n\n"
-        f"✅ `{len(servers)}` new servers found!\n"
+        f"✅ `{len(servers)}` servers found!\n"
         f"🏷️ **Tag:** `{NEW_TAG}`\n"
-        f"⏰ **Updated (UTC):** `{now_utc}`\n\n"
-        f"See the full list on GitHub:\n"
-        f"https://github.com/{os.environ.get('GITHUB_REPOSITORY', '')}"
+        f"⏰ **Updated (UTC):** `{now_utc}`\n"
     )
 
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {'chat_id': TELEGRAM_CHANNEL_ID, 'text': message_text, 'parse_mode': 'Markdown'}
+    full_server_list = "\n".join(servers)
+    char_limit = 4000
 
-    try:
-        response = requests.post(url, json=payload, timeout=10)
-        if response.status_code == 200:
-            logging.info("Successfully sent notification to Telegram.")
-        else:
-            logging.error(f"Failed to send Telegram message: {response.status_code} - {response.text}")
-    except Exception as e:
-        logging.error(f"Error connecting to Telegram API: {e}")
+    if len(header) + len(full_server_list) + 10 < char_limit:
+        message_text = f"{header}\n```\n{full_server_list}\n```"
+        messages_to_send = [message_text]
+    else:
+        messages_to_send = [header]
+        current_chunk = ""
+        for server in servers:
+            if len(current_chunk) + len(server) + 1 > char_limit - 10:
+                messages_to_send.append(f"```\n{current_chunk.strip()}\n```")
+                current_chunk = ""
+            current_chunk += server + "\n"
         
+        if current_chunk:
+            messages_to_send.append(f"```\n{current_chunk.strip()}\n```")
+
+    api_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    
+    for i, message in enumerate(messages_to_send):
+        payload = {'chat_id': TELEGRAM_CHANNEL_ID, 'text': message, 'parse_mode': 'Markdown', 'disable_web_page_preview': True}
+        try:
+            response = requests.post(api_url, json=payload, timeout=15)
+            if response.status_code == 200:
+                logging.info(f"Successfully sent message part {i+1}/{len(messages_to_send)} to Telegram.")
+            else:
+                logging.error(f"Failed to send Telegram message part {i+1}: {response.status_code} - {response.text}")
+                break
+        except Exception as e:
+            logging.error(f"Error connecting to Telegram API for message part {i+1}: {e}")
+            break
+
 def main():
     """The main function of the script."""
     try:
@@ -128,7 +143,6 @@ def main():
 
     output_nodes_md = []
     all_found_proxies = set()
-
     table_line_pattern = re.compile(r'^\s*\|.*\|.*\|.*\|(https?://.*)\|')
 
     for line in lines:
@@ -136,14 +150,8 @@ def main():
         if match:
             url = match.group(1).strip()
             proxies = get_proxies_from_url(url)
-            if proxies:
-                all_found_proxies.update(proxies)
-                status_icon = "✅"
-                count = len(proxies)
-            else:
-                status_icon = "❌"
-                count = 0
-            
+            status_icon, count = ("✅", len(proxies)) if proxies else ("❌", 0)
+            all_found_proxies.update(proxies)
             updated_line = re.sub(r'\|.*\|.*\|', f'| {status_icon} | {count} |', line, count=1)
             output_nodes_md.append(updated_line)
         else:
@@ -161,11 +169,19 @@ def main():
     logging.info(f"Total unique Shadowsocks servers found: {len(ss_servers_final)}")
 
     if ss_servers_final:
-        sub_content = '\n'.join(ss_servers_final)
-        encoded_sub = base64.b64encode(sub_content.encode('utf-8')).decode('utf-8')
-        with open('ss_sub', 'w', encoding='utf-8') as f:
+        # --- بخش اضافه شده برای ساخت فایل‌ها ---
+        server_list_content = '\n'.join(ss_servers_final)
+        
+        # 1. ساخت فایل ss.txt (متن ساده)
+        with open(SS_TEXT_FILE, 'w', encoding='utf-8') as f:
+            f.write(server_list_content)
+        logging.info(f"`{SS_TEXT_FILE}` plain text file created.")
+        
+        # 2. ساخت فایل ss_sub (اشتراک Base64)
+        encoded_sub = base64.b64encode(server_list_content.encode('utf-8')).decode('utf-8')
+        with open(SS_SUB_FILE, 'w', encoding='utf-8') as f:
             f.write(encoded_sub)
-        logging.info("`ss_sub` subscription file created.")
+        logging.info(f"`{SS_SUB_FILE}` subscription file created.")
 
         update_readme(ss_servers_final)
         send_to_telegram(ss_servers_final)
