@@ -24,7 +24,6 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
-          # این متغیر برای ساخت لینک اشتراک در README لازم است
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: python main.py
 
@@ -33,10 +32,11 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           
-          # چک کردن برای وجود تغییرات در فایل‌های مهم
-          if ! git diff --quiet README.md nodes.md ss_sub; then
+          # چک کردن تغییرات در تمام فایل‌های مهم
+          if ! git diff --quiet README.md nodes.md ss_sub ss.txt; then
             echo "Changes detected. Committing..."
-            git add README.md nodes.md ss_sub
+            # افزودن تمام فایل‌های آپدیت شده
+            git add README.md nodes.md ss_sub ss.txt
             git commit -m "Auto-update Shadowsocks servers [$(date -u +'%Y-%m-%d %H:%M')]"
             git push
           else
