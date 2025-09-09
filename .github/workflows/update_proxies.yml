@@ -1,15 +1,18 @@
 name: Update Proxies and Notify
 
 on:
-  # این اکشن رو هر ۶ ساعت یک‌بار اجرا می‌کنه
   schedule:
     - cron: '0 */6 * * *'
-  # این خط بهت اجازه می‌ده که اکشن رو به صورت دستی هم از تب Actions اجرا کنی
   workflow_dispatch:
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    
+    # <<< این بخش رو اضافه کن
+    permissions:
+      contents: write
+
     steps:
       # مرحله ۱: کدها رو از ریپازیتوری دانلود می‌کنه
       - name: Checkout repository
@@ -36,12 +39,10 @@ jobs:
         run: |
           git config --global user.name "GitHub Action Bot"
           git config --global user.email "action@github.com"
-          # فقط در صورتی کامیت می‌کنه که تغییری وجود داشته باشه
           if [[ -n $(git status -s) ]]; then
             git add .
             git commit -m "✅ Update proxy list"
             git push
-            # یک متغیر برای مرحله بعد می‌سازیم تا بفهمیم تغییری بوده یا نه
             echo "HAS_CHANGES=true" >> $GITHUB_ENV
           else
             echo "No changes to commit."
@@ -50,7 +51,6 @@ jobs:
 
       # مرحله ۶: اگر تغییری وجود داشت، به تلگرام نوتیفیکیشن می‌فرسته
       - name: Send Telegram notification
-        # این مرحله فقط زمانی اجرا می‌شه که در مرحله قبل تغییری ثبت شده باشه
         if: env.HAS_CHANGES == 'true'
         run: |
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
