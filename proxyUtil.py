@@ -1,5 +1,5 @@
 # This code is sourced from https://github.com/mheidari98/proxyUtil
-# It is included here to make the project self-contained.
+# It has been modified to be self-contained and smarter.
 
 import requests
 import re
@@ -7,36 +7,45 @@ import base64
 import json
 import logging
 
-def ScrapS(url):
+def get_proxies_from_url(url):
+    """
+    Fetches proxies from a URL. It automatically handles both
+    plain text and Base64 encoded content.
+    """
     try:
-        b = requests.get(url).content
-        s = base64.b64decode(b).decode()
-        return s.splitlines()
-    except:
-        return []
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
+        
+        content = response.text
+        proxies = content.splitlines()
 
-def ScrapURL(url):
-    try:
-        s = requests.get(url).text
-        return s.splitlines()
-    except:
-        return []
+        # Check if it's likely a plain text list of proxies
+        if any("://" in p for p in proxies):
+            logging.info(f"Successfully scraped {len(proxies)} proxies as plain text from {url}")
+            # Filter out any empty lines that might exist
+            return [p for p in proxies if p.strip()]
 
-def decodeJ(j):
-    s = ""
-    try:
-        d = json.loads(j)
-        if (protocol := d.get("protocol")):
-            if protocol == "vmess":
-                s = f"vmess://{base64.b64encode(json.dumps(d['settings']).encode()).decode()}"
-            elif protocol == "vless":
-                s = f"vless://{d['settings']['vnext'][0]['users'][0]['id']}@{d['settings']['vnext'][0]['address']}:{d['settings']['vnext'][0]['port']}?encryption=none&security=reality&sni={d['streamSettings']['realitySettings']['serverName']}&fp={d['streamSettings']['realitySettings']['fingerprint']}&pbk={d['streamSettings']['realitySettings']['publicKey']}&sid={d['streamSettings']['realitySettings']['shortId']}&type=tcp&headerType=none#{d['remarks']}"
-            elif protocol == "trojan":
-                s = f"trojan://{d['settings']['servers'][0]['password']}@{d['settings']['servers'][0]['address']}:{d['settings']['servers'][0]['port']}?security=tls&headerType=none&type=tcp#{d['remarks']}"
-    except:
-        logging.error(f"Error decoding json: {j}")
-        pass
-    return s
+        # If not, try to decode it as Base64
+        try:
+            # The content might have extra whitespace that needs to be removed
+            decoded_content = base64.b64decode(content.strip()).decode('utf-8')
+            decoded_proxies = decoded_content.splitlines()
+            if any("://" in p for p in decoded_proxies):
+                logging.info(f"Successfully scraped {len(decoded_proxies)} proxies as Base64 from {url}")
+                return [p for p in decoded_proxies if p.strip()]
+        except Exception:
+            # It wasn't valid Base64, which is fine. It might just be an empty or invalid file.
+            logging.warning(f"Content from {url} is not a valid proxy list or Base64. Skipping.")
+            return []
+
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Failed to fetch URL {url}. Error: {e}")
+        return []
+    except Exception as e:
+        logging.error(f"An unexpected error occurred while processing {url}. Error: {e}")
+        return []
+    
+    return [] # Return empty list if no proxies were found
 
 def tagsChanger(p, tag, force=False):
     output = []
@@ -62,21 +71,3 @@ def tagsChanger(p, tag, force=False):
     if force:
         return output
     return p
-
-class v2rayChecker:
-    def __init__(self, proxies_url:str, timeout:int = 1):
-        self.proxies_url = proxies_url
-        self.timeout = timeout
-        self.proxies = []
-        self.OKproxies = []
-
-    def getProxies(self):
-        self.proxies = ScrapS(self.proxies_url)
-        return self.proxies
-
-    def check(self, p:str):
-        if (s := self.check_latency(p)):
-            self.OKproxies.append((s,p))
-
-    def check_latency(self, p: str):
-        pass
