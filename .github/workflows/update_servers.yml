@@ -1,48 +1,58 @@
-name: Update Shadowsocks Servers and Notify Telegram
+name: Update Proxies and Notify
 
 on:
+  # این اکشن رو هر ۶ ساعت یک‌بار اجرا می‌کنه
   schedule:
     - cron: '0 */6 * * *'
+  # این خط بهت اجازه می‌ده که اکشن رو به صورت دستی هم از تب Actions اجرا کنی
   workflow_dispatch:
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    
-    # --- این بخش کلیدی برای حل مشکل است ---
-    permissions:
-      contents: write # به ورک‌فلو اجازه نوشتن (push) در ریپازیتوری را می‌دهد
-    # ------------------------------------
-
     steps:
+      # مرحله ۱: کدها رو از ریپازیتوری دانلود می‌کنه
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      # مرحله ۲: پایتون رو نصب و آماده می‌کنه
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
+      # مرحله ۳: نیازمندی‌های پروژه رو نصب می‌کنه
       - name: Install dependencies
-        run: pip install requests
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-      - name: Run Python script
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
+      # مرحله ۴: اسکریپت اصلی رو برای جمع‌آوری پراکسی‌ها اجرا می‌کنه
+      - name: Run the update script
         run: python main.py
 
+      # مرحله ۵: تغییرات رو کامیت و پوش می‌کنه
       - name: Commit and push changes
         run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          
-          if ! git diff --quiet README.md nodes.md ss_sub ss; then
-            echo "Changes detected. Committing..."
-            git add README.md nodes.md ss_sub ss
-            git commit -m "Auto-update Shadowsocks servers [$(date -u +'%Y-%m-%d %H:%M')]"
+          git config --global user.name "GitHub Action Bot"
+          git config --global user.email "action@github.com"
+          # فقط در صورتی کامیت می‌کنه که تغییری وجود داشته باشه
+          if [[ -n $(git status -s) ]]; then
+            git add .
+            git commit -m "✅ Update proxy list"
             git push
+            # یک متغیر برای مرحله بعد می‌سازیم تا بفهمیم تغییری بوده یا نه
+            echo "HAS_CHANGES=true" >> $GITHUB_ENV
           else
             echo "No changes to commit."
+            echo "HAS_CHANGES=false" >> $GITHUB_ENV
           fi
+
+      # مرحله ۶: اگر تغییری وجود داشت، به تلگرام نوتیفیکیشن می‌فرسته
+      - name: Send Telegram notification
+        # این مرحله فقط زمانی اجرا می‌شه که در مرحله قبل تغییری ثبت شده باشه
+        if: env.HAS_CHANGES == 'true'
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+          -d "chat_id=${{ secrets.TELEGRAM_CHANNEL_ID }}" \
+          -d "text=✅ لیست پراکسی‌ها آپدیت شد! 🔥%0A%0Aهمین الان می‌تونید کانفیگ‌های جدید رو از لینک زیر دریافت کنید:%0A%0Ahttps://github.com/nekovpn/omg"
