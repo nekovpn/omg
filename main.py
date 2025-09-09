@@ -3,7 +3,7 @@ import base64
 import logging
 import re
 import requests
-from proxyUtil import *
+from proxyUtil import get_proxies_from_url, tagsChanger # Import specific functions
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -11,59 +11,66 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 def checkURL(url):
     try:
         r = requests.head(url, timeout=3)
-    except:
+        return r.status_code // 100 == 2
+    except requests.exceptions.RequestException:
         return False
-    return r.status_code//100 == 2
 
 
 output = []
-proxy = []
+all_proxies = []
 
 with open("nodes.md", encoding="utf8") as file:
-    cnt = 0
-    while line := file.readline():
-        line = line.rstrip()
-        if line.startswith("|"):
-            if cnt>1 :
-                url = line.split('|')[-2]
-                for _ in range(3):
-                    if status := checkURL(url):
-                        break
-                status = "✅" if status else "❌"
-                p = ScrapURL(url)
-                proxy.extend(p)
-                line = re.sub(r'^\|+?(.*?)\|+?(.*?)\|+?', f'| {status} | {len(p)} |', line, count=1)
-            cnt+=1
-        output.append(line)
+    lines = file.readlines()
 
-with open("nodes.md", "w") as f:
-    f.write('\n'.join(output))
+# We process the lines in memory to update them
+processed_lines = []
+header_count = 0
+for line in lines:
+    line = line.strip()
+    if line.startswith("|"):
+        if header_count > 1: # Skip header and separator lines
+            parts = line.split('|')
+            if len(parts) > 3:
+                url = parts[3].strip()
+                
+                status_ok = checkURL(url)
+                status_icon = "✅" if status_ok else "❌"
+                
+                # Scrape proxies only if URL is accessible
+                p = []
+                if status_ok:
+                    p = get_proxies_from_url(url)
+                
+                all_proxies.extend(p)
+                
+                # Reconstruct the line with updated info
+                parts[1] = f" {status_icon} "
+                parts[2] = f" {len(p)} "
+                line = "|".join(parts)
+        header_count += 1
+    processed_lines.append(line)
+
+with open("nodes.md", "w", encoding="utf8") as f:
+    f.write('\n'.join(processed_lines))
+    f.write('\n') # Add a newline at the end of the file
 
 TAGs = ["4FreeIran", "4Nika", "4Sarina", "4Jadi", "4Kian", "4Mohsen"]
 cur_tag = TAGs[datetime.datetime.now().hour % len(TAGs)]
 
-lines = tagsChanger(proxy, cur_tag)
-lines = tagsChanger(sorted(set(lines)), cur_tag, True)
+# Remove duplicates and sort
+unique_proxies = sorted(list(set(all_proxies)))
+
+# Change tags
+lines = tagsChanger(unique_proxies, cur_tag)
+lines = tagsChanger(lines, cur_tag, True)
 
 # فقط پراکسی‌های ss رو جدا می‌کنیم
 ss  = [*filter(lambda s: s.startswith("ss://"), lines)]
 
-# print([*map(len, [ss])]) # برای دیباگ کردن تعداد پراکسی‌های ss
-
 # فایل all که شامل همه پراکسی‌هاست ساخته می‌شه
 with open('all', 'wb') as f:
-    f.write(base64.b64encode('\n'.join(lines).encode()))
+    f.write(base64.b64encode('\n'.join(lines).encode('utf-8')))
 
-# فقط فایل ss.txt ساخته می‌شه
-with open('ss.txt', 'wb') as f:
-    f.write(base64.b64encode('\n'.join(ss).encode()))
-
-# بخش‌های مربوط به vmess, vless, trojan حذف شدند
-# with open('vmess', 'wb') as f:
-#     f.write(base64.b64encode('\n'.join(vmess).encode()))
-
-# with open('vless', 'wb') as f:
-#     f.write(base64.b64encode('\n'.join(vless).encode()))
-
-# with open('trojan', 'wb') as f:
-#     f.write(base64.b64encode('\n'.join(trojan).encode()))
+# فایل ss ساخته می‌شه (بدون پسوند .txt)
+with open('ss', 'wb') as f: # <-- این خط تغییر کرد
+    f.write(base64.b64encode('\n'.join(ss).encode('utf-8')))
