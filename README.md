@@ -25,5 +25,5 @@ Find proxies that are available in your country and use them in your application
     ```
   - **shadowsocks**
     ```bash
-    https://raw.githubusercontent.com/nekovpn/omg/main/ss.txt
+    https://raw.githubusercontent.com/nekovpn/omg/main/ss
     ```
