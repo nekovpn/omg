@@ -1,76 +1,96 @@
-import datetime
-import base64
-import logging
-import re
 import requests
-from proxyUtil import get_proxies_from_url, tagsChanger # Import specific functions
+from base64 import b64decode
+from concurrent.futures import ThreadPoolExecutor
+import time
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# لیست لینک‌های منابع که حاوی کانفیگ‌های مختلف (از جمله شدوساکس) هستند
+V2RAY_LINKS = [
+    "https://raw.githubusercontent.com/MrPooyaX/VpnsFucking/main/BeVpn.txt",
+    "https://raw.githubusercontent.com/yebekhe/TVC/main/subscriptions/xray/base64/mix",
+    "https://raw.githubusercontent.com/ALIILAPRO/v2rayNG-Config/main/sub.txt",
+    "https://raw.githubusercontent.com/mfuu/v2ray/master/v2ray",
+    "https://raw.githubusercontent.com/soroushmirzaei/telegram-configs-collector/main/protocols/reality",
+    "https://raw.githubusercontent.com/soroushmirzaei/telegram-configs-collector/main/protocols/vless",
+    "https://raw.githubusercontent.com/soroushmirzaei/telegram-configs-collector/main/protocols/vmess",
+    "https://raw.githubusercontent.com/soroushmirzaei/telegram-configs-collector/main/protocols/trojan",
+    "https://raw.githubusercontent.com/soroushmirzaei/telegram-configs-collector/main/protocols/shadowsocks",
+    "https://raw.githubusercontent.com/ts-sf/fly/main/v2",
+    "https://raw.githubusercontent.com/aiboboxx/v2rayfree/main/v2",
+    "https://mrpooya.top/SuperApi/BE.php",
+]
 
-
-def checkURL(url):
+def fetch_url(url):
+    """محتوای یک URL را با تایم‌اوت مشخص دریافت می‌کند."""
     try:
-        r = requests.head(url, timeout=3)
-        return r.status_code // 100 == 2
-    except requests.exceptions.RequestException:
-        return False
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()  # در صورت وجود خطا، استثنا ایجاد می‌کند
+        return response.text
+    except requests.exceptions.RequestException as e:
+        print(f"خطا در دریافت اطلاعات از {url}: {e}")
+        return None
 
+def get_metadata_headers():
+    """هدرهای متا دیتا برای فایل اشتراک (subscription) را برمی‌گرداند."""
+    return """#profile-title: base64:8J+GkyBHaXQ6IEBGaXJtZm94IOKbk++4j+KAjfCfkqU=
+#profile-update-interval: 1
+#subscription-userinfo: upload=29; download=12; total=10737418240000000; expire=2546249531
+#support-url: https://github.com/firmfox/Proxify
+#profile-web-page-url: https://github.com/firmfox/Proxify\n"""
 
-output = []
-all_proxies = []
+def generate_shadowsocks_file():
+    """
+    لینک‌های اشتراک را دریافت کرده، کانفیگ‌های شدوساکس را فیلتر می‌کند
+    و آن‌ها را در فایل shadowsocks.txt ذخیره می‌کند.
+    """
+    shadowsocks_configs = set()
+    
+    print("در حال دریافت اطلاعات از لینک‌های اشتراک...")
+    with ThreadPoolExecutor(max_workers=15) as executor:
+        # ارسال تمام URLها به executor برای اجرای موازی
+        future_to_url = {executor.submit(fetch_url, url): url for url in V2RAY_LINKS}
+        
+        for future in future_to_url:
+            data = future.result()
+            if not data:
+                continue
 
-with open("nodes.md", encoding="utf8") as file:
-    lines = file.readlines()
+            # پردازش اطلاعات دریافت شده
+            lines = []
+            try:
+                # تلاش برای دیکود کردن از Base64
+                decoded_data = b64decode(data).decode('utf-8')
+                lines = decoded_data.splitlines()
+            except Exception:
+                # اگر دیکود با خطا مواجه شد، آن را به عنوان متن ساده در نظر می‌گیریم
+                lines = data.splitlines()
 
-# We process the lines in memory to update them
-processed_lines = []
-header_count = 0
-for line in lines:
-    line = line.strip()
-    if line.startswith("|"):
-        if header_count > 1: # Skip header and separator lines
-            parts = line.split('|')
-            if len(parts) > 3:
-                url = parts[3].strip()
-                
-                status_ok = checkURL(url)
-                status_icon = "✅" if status_ok else "❌"
-                
-                # Scrape proxies only if URL is accessible
-                p = []
-                if status_ok:
-                    p = get_proxies_from_url(url)
-                
-                all_proxies.extend(p)
-                
-                # Reconstruct the line with updated info
-                parts[1] = f" {status_icon} "
-                parts[2] = f" {len(p)} "
-                line = "|".join(parts)
-        header_count += 1
-    processed_lines.append(line)
+            # فیلتر کردن کانفیگ‌های شدوساکس
+            for line in lines:
+                stripped_line = line.strip()
+                if stripped_line.lower().startswith('ss://'):
+                    shadowsocks_configs.add(stripped_line)
 
-with open("nodes.md", "w", encoding="utf8") as f:
-    f.write('\n'.join(processed_lines))
-    f.write('\n') # Add a newline at the end of the file
+    if not shadowsocks_configs:
+        print("هیچ کانفیگ شدوساکسی پیدا نشد.")
+        return
 
-TAGs = ["4FreeIran", "4Nika", "4Sarina", "4Jadi", "4Kian", "4Mohsen"]
-cur_tag = TAGs[datetime.datetime.now().hour % len(TAGs)]
+    # ذخیره کانفیگ‌های جمع‌آوری شده در فایل
+    print(f"تعداد {len(shadowsocks_configs)} کانفیگ یکتای شدوساکس پیدا شد. در حال ذخیره‌سازی در shadowsocks.txt...")
+    with open('shadowsocks.txt', 'w', encoding='utf-8') as f:
+        f.write(get_metadata_headers())
+        # مرتب‌سازی کانفیگ‌ها برای خروجی یکسان
+        sorted_configs = sorted(list(shadowsocks_configs))
+        f.write('\n'.join(sorted_configs) + '\n')
+    print("فایل shadowsocks.txt با موفقیت ایجاد شد.")
 
-# Remove duplicates and sort
-unique_proxies = sorted(list(set(all_proxies)))
+def main():
+    """نقطه شروع اصلی برنامه."""
+    start_time = time.time()
+    
+    generate_shadowsocks_file()
+    
+    end_time = time.time()
+    print(f"\nعملیات در {end_time - start_time:.2f} ثانیه به پایان رسید.")
 
-# Change tags
-lines = tagsChanger(unique_proxies, cur_tag)
-lines = tagsChanger(lines, cur_tag, True)
-
-# فقط پراکسی‌های ss رو جدا می‌کنیم
-ss  = [*filter(lambda s: s.startswith("ss://"), lines)]
-
-# فایل all که شامل همه پراکسی‌هاست ساخته می‌شه
-with open('all', 'wb') as f:
-    f.write(base64.b64encode('\n'.join(lines).encode('utf-8')))
-
-# فایل ss ساخته می‌شه (بدون پسوند .txt)
-with open('ss', 'wb') as f: # <-- این خط تغییر کرد
-    f.write(base64.b64encode('\n'.join(ss).encode('utf-8')))
+if __name__ == "__main__":
+    main()
