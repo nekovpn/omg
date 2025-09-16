@@ -1,58 +1,55 @@
-name: Update Proxies and Notify
+# نام ورک‌فلو که در تب Actions گیت‌هاب نمایش داده می‌شود
+name: Generate Shadowsocks Configs
 
+# تریگرها: چه زمانی این ورک‌فلو اجرا شود
 on:
+  # 1. اجرای زمان‌بندی شده: هر 6 ساعت یکبار (می‌توانید زمان را تغییر دهید)
   schedule:
     - cron: '0 */6 * * *'
+
+  # 2. اجرای دستی: دکمه "Run workflow" در تب Actions گیت‌هاب فعال می‌شود
   workflow_dispatch:
 
+  # 3. اجرای خودکار: هر بار که کدی به شاخه main پوش شود (برای تست اولیه مفید است)
+  push:
+    branches:
+      - main
+
+# تعریف جاب‌ها (مراحل اجرایی)
 jobs:
-  build-and-deploy:
+  build:
+    # استفاده از آخرین نسخه اوبونتو برای اجرا
     runs-on: ubuntu-latest
-    
-    # <<< این بخش رو اضافه کن
-    permissions:
-      contents: write
 
     steps:
-      # مرحله ۱: کدها رو از ریپازیتوری دانلود می‌کنه
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      # مرحله 1: دریافت کد از ریپازیتوری شما
+      - name: Check out repository code
+        uses: actions/checkout@v4
 
-      # مرحله ۲: پایتون رو نصب و آماده می‌کنه
+      # مرحله 2: نصب و راه‌اندازی پایتون
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.10' # می‌توانید نسخه پایتون را تغییر دهید
 
-      # مرحله ۳: نیازمندی‌های پروژه رو نصب می‌کنه
+      # مرحله 3: نصب پکیج‌های مورد نیاز از فایل requirements.txt
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # مرحله ۴: اسکریپت اصلی رو برای جمع‌آوری پراکسی‌ها اجرا می‌کنه
-      - name: Run the update script
+      # مرحله 4: اجرای اسکریپت اصلی برای تولید فایل shadowsocks.txt
+      - name: Run script to generate configs
         run: python main.py
 
-      # مرحله ۵: تغییرات رو کامیت و پوش می‌کنه
-      - name: Commit and push changes
-        run: |
-          git config --global user.name "GitHub Action Bot"
-          git config --global user.email "action@github.com"
-          if [[ -n $(git status -s) ]]; then
-            git add .
-            git commit -m "✅ Update proxy list"
-            git push
-            echo "HAS_CHANGES=true" >> $GITHUB_ENV
-          else
-            echo "No changes to commit."
-            echo "HAS_CHANGES=false" >> $GITHUB_ENV
-          fi
-
-      # مرحله ۶: اگر تغییری وجود داشت، به تلگرام نوتیفیکیشن می‌فرسته
-      - name: Send Telegram notification
-        if: env.HAS_CHANGES == 'true'
-        run: |
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-          -d "chat_id=${{ secrets.TELEGRAM_CHANNEL_ID }}" \
-          -d "text=✅ لیست پراکسی‌ها آپدیت شد! 🔥%0A%0Aهمین الان می‌تونید کانفیگ‌های جدید رو از لینک زیر دریافت کنید:%0A%0Ahttps://github.com/nekovpn/omg"
+      # مرحله 5: کامیت و پوش کردن فایل shadowsocks.txt در ریپازیتوری
+      - name: Commit and push if changed
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          # پیام کامیت
+          commit_message: 'ci: auto-update shadowsocks configs'
+          # فقط فایل shadowsocks.txt را کامیت کن
+          file_pattern: 'shadowsocks.txt'
+          # اطلاعات نویسنده کامیت
+          commit_user_name: 'GitHub Actions Bot'
+          commit_user_email: 'actions@github.com'
